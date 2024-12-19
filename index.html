@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Racing Game</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #222;
+            overflow: hidden;
+            font-family: 'Roboto', Arial, sans-serif;
+        }
+
+        #score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
+        }
+
+        #score:hover {
+            background-color: rgba(0, 0, 0, 0.9);
+            box-shadow: 0 0 20px rgba(10, 9, 9, 0.8);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #game-over-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 12px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+            display: none;
+        }
+
+        #game-over-message h2 {
+            font-size: 32px;
+            color: #e74c3c;
+        }
+
+        #game-over-message p {
+            font-size: 24px;
+            color: #ecf0f1;
+        }
+
+        #restart-button {
+            padding: 10px 20px;
+            margin-top: 20px;
+            background-color: #e74c3c;
+            color: white;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #answer-buttons {
+    margin-top: 20px;
+}
+
+.answer-button {
+    background-color: #4CAF50;
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    font-size: 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin: 5px;
+}
+
+.answer-button:hover {
+    background-color: #45a049;
+}
+
+        #restart-button:hover {
+            background-color: #c0392b;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="score">Energy: 100%</div>
+    <div id="question-popup" style="display:none; backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 12px; color: #fff; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); text-align: center; width: 80%; max-width: 400px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <p id="question-text" style="font-size: 18px; font-weight: 600;"></p>
+        <div id="answer-buttons">
+            <!-- Answer buttons will be dynamically added here -->
+        </div>
+        
+            Submit Answer
+        </button>
+    </div>
+    
+    <div id="game-over-message">
+        <h2>Game Over</h2>
+        <button id="restart-button">Restart</button>
+    </div>
+    <canvas id="webgl-canvas"></canvas>
+    
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("webgl-canvas") });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Skybox setup
+    const loader = new THREE.CubeTextureLoader();
+    const skyboxTextures = loader.load([ 
+        'textures/xpos.png',
+        'textures/xneg.png',
+        'textures/ypos.png',
+        'textures/yneg.png',
+        'textures/zpos.png',
+        'textures/zneg.png'
+    ], () => {
+        console.log("Skybox textures loaded successfully!");
+    }, undefined, (error) => {
+        console.error("Error loading textures:", error);
+    });
+    scene.background = skyboxTextures;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0x404040, 1);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 10, 5);
+    scene.add(directionalLight);
+
+    // Spotlight properties
+    const spotlight = new THREE.SpotLight(0xffffff);
+    spotlight.position.set(10, 100, 10); // Example position: x = 10, y = 100, z = 10
+    spotlight.angle = Math.PI / 6; // Spotlight angle in radians (30 degrees)
+
+    // Calculate the distance from spotlight to the ground (assuming the ground is at y = 0)
+    const distance = spotlight.position.y; // Assuming ground is at y = 0
+
+    // Calculate the radius of the illuminated area on the ground
+    const radius = distance * Math.tan(spotlight.angle);
+
+    // Calculate the area of the illuminated circle
+    const area = Math.PI * Math.pow(radius, 2);
+
+    console.log("Illuminated Area on the Ground: " + area.toFixed(2) + " square units");
+
+    spotlight.castShadow = true;
+    scene.add(spotlight);
+
+    let carEnergy = 100;  // 100% energy at start
+    const energyDepletionRateInside = 0.1;  // Slower depletion rate inside the spotlight
+    let energyDepletionRateOutside = 0.2;  // Faster depletion rate outside the spotlight
+    let isEnergyDepleting = true;  // Flag to control whether energy depletes
+
+    // Road setup
+    const roadGeometry = new THREE.PlaneGeometry(200, 2000);
+    const roadMaterial = new THREE.MeshStandardMaterial({
+        color: 0xb28430,
+        roughness: 0.7,
+        metalness: 0.2
+    });
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+    road.rotation.x = -Math.PI / 2;
+    scene.add(road);
+
+    // Neon strips
+    const neonMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1abc9c,
+        emissive: 0x1abc9c,
+        emissiveIntensity: 0.5
+    });
+    const neonStrip = new THREE.PlaneGeometry(200, 0.5);
+    const leftNeon = new THREE.Mesh(neonStrip, neonMaterial);
+    const rightNeon = new THREE.Mesh(neonStrip, neonMaterial);
+    leftNeon.position.set(-100, 1, 0);
+    rightNeon.position.set(100, 1, 0);
+    scene.add(leftNeon);
+    scene.add(rightNeon);
+
+    let isPowerUpActive = false;  // Track whether power-up is active
+    let powerUp = null;  // Reference to the power-up
+
+    // Power-up setup: Create a red cube power-up
+    let powerUps = [];  // Array to hold all power-ups
+
+// Function to generate random positions outside the spotlight area
+// Function to generate random positions outside the spotlight area
+function generateRandomPositionOutsideSpotlight(attempts = 0) {
+    const maxAttempts = 100;  // Limit the number of attempts
+    const x = Math.random() * 200 - 100;
+    const z = Math.random() * 500 - 500;
+
+    // Check if the position is too close to any existing power-up
+    for (let i = 0; i < powerUps.length; i++) {
+        const powerUpPosition = new THREE.Vector2(powerUps[i].position.x, powerUps[i].position.z);
+        const newPosition = new THREE.Vector2(x, z);
+        const dist = newPosition.distanceTo(powerUpPosition);
+
+        if (dist < 400) {
+            // If the new position is too close to an existing power-up, retry
+            if (attempts < maxAttempts) {
+                return generateRandomPositionOutsideSpotlight(attempts + 1);  // Retry with increased attempt count
+            } else {
+                console.warn("Max attempts reached, returning default position");
+                return new THREE.Vector3(Math.random() * 200 - 100, 1.5, Math.random() * 400 - 500);  // Default fallback position
+            }
+        }
+    }
+    return new THREE.Vector3(x, 1.5, z);  // Return the valid random position
+}
+
+// Create multiple power-ups
+function createPowerUps(count) {
+    for (let i = 0; i < count; i++) {
+        const powerUpGeometry = new THREE.TorusGeometry(1, 0.2, 16, 100); // A torus shape
+
+        const powerUpMaterial = new THREE.MeshStandardMaterial({
+             color: 0xff0000,
+             emissive: 0x1abc9c,  // The same green color emits light
+    emissiveIntensity: 1.5,  // Controls how strongly the material glows 
+            });
+        const powerUp = new THREE.Mesh(powerUpGeometry, powerUpMaterial);
+
+        // Position power-up outside the spotlight area
+        powerUp.position.copy(generateRandomPositionOutsideSpotlight());
+        
+        scene.add(powerUp);
+        powerUps.push(powerUp);
+    }
+}
+
+// Call the function to create 5 power-ups at the start of the game
+createPowerUps(25);
+function removePowerUps() {
+    // Remove all power-ups from the scene
+    for (let i = 0; i < powerUps.length; i++) {
+        scene.remove(powerUps[i]);
+    }
+    // Clear the array of power-ups
+    powerUps = [];
+}
+    // Declare the question popup and answer button
+    document.addEventListener("DOMContentLoaded", function () {
+        const answerButtonsContainer = document.getElementById('answer-buttons');       
+        const questionPopup = document.getElementById('question-popup');
+        const questionText = document.getElementById('question-text');
+
+        // Questions array    
+        const questions = [
+        { question: "What is renewable energy?", options: ["Energy from nuclear power.", "Energy from fossil fuels.","Energy from natural sources."], answer: "Energy from natural sources." },
+        { question: "What is solar energy?", options: ["Energy from the moon.", "Energy from the sun.", "Energy from the wind."], answer: "Energy from the sun." },
+        { question: "What is wind energy?", options: ["Energy generated through wind turbines.", "Energy generated by solar panels.", "Energy generated by water."], answer: "Energy generated through wind turbines." }
+    ];
+
+    let currentQuestion = null;
+
+    function askQuestion() {
+        const randomIndex = Math.floor(Math.random() * questions.length);
+        currentQuestion = questions[randomIndex];
+        questionText.textContent = currentQuestion.question;
+
+        // Clear previous answers
+        answerButtonsContainer.innerHTML = '';
+        currentQuestion.options.forEach(option => {
+            const button = document.createElement('button');
+            button.textContent = option;
+            button.className = 'answer-button';
+            button.addEventListener('click', () => answerQuestion(option));
+            answerButtonsContainer.appendChild(button);
+        });    
+        questionPopup.style.display = 'block';
+
+        // Pause energy depletion while the question is being displayed
+        isEnergyDepleting = false;
+    }
+
+    // Handle the answer to the question
+    function answerQuestion(selectedAnswer) {
+        if (selectedAnswer === currentQuestion.answer) {
+            carEnergy = Math.min(100, 75); // Correct answer: Increase energy
+        } else {
+            carEnergy = Math.max(0, carEnergy - 25); // Incorrect answer: Decrease energy
+        }
+        document.getElementById("score").textContent = "Energy: " + carEnergy.toFixed(2) + "%";
+        questionPopup.style.display = 'none';
+        scene.remove(powerUp);  // Remove power-up after use
+        isPowerUpActive = false;
+        energyDepletionRateOutside = 0.25;
+
+        // Resume energy depletion after the answer is selected
+        isEnergyDepleting = true;
+    }
+
+    // Check for power-up collision
+    function checkCollision() {
+        if (!car) return false;  // Prevent collision check if car is not loaded
+
+        const carPosition = new THREE.Vector3(car.position.x, car.position.y, car.position.z);
+        for (let i = 0; i < powerUps.length; i++) {
+        const powerUpPosition = new THREE.Vector3(powerUps[i].position.x, powerUps[i].position.y, powerUps[i].position.z);
+        const distance = carPosition.distanceTo(powerUpPosition);
+        
+        if (distance < 2) {  // Collision detected
+            powerUps[i].visible = false;  // Hide the power-up after collection
+            powerUps.splice(i, 1);  // Remove the collected power-up from the array
+            return true;  // Power-up collected
+        }
+    }
+    return false;
+    }
+    const finishLineGeometry = new THREE.PlaneGeometry(200, 5);  // A wide, thin plane for the finish line
+    const finishLineMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1abc9c,  // Green finish line
+        emissive: 0x00ff00,
+        emissiveIntensity: 0.5
+    });
+    const finishLine = new THREE.Mesh(finishLineGeometry, finishLineMaterial);
+    finishLine.rotation.x = -Math.PI / 2;  // Ensure the finish line is horizontal
+    finishLine.position.set(0, 0.1, -600);  // Position it at the end of the road (adjust as needed)
+    scene.add(finishLine);
+    // Car setup
+    const carLoader = new THREE.GLTFLoader();
+    let car = null;
+
+    // Replace 'path/to/car_model.glb' with the actual path to your 3D car model
+    carLoader.load('car/car.glb', (gltf) => {
+        car = gltf.scene;
+        car.position.y = 1; // Adjust height
+        scene.add(car);
+    }, undefined, (error) => {
+        console.error("Error loading car model:", error);
+    });
+
+    // Camera setup
+    camera.position.set(0, 2, 8);  // Closer on the Z axis (8 is a reasonable value)
+    camera.lookAt(new THREE.Vector3(0, 1, 0));  // Look at the car’s position
+    
+    // Car movement logic
+    const keys = {};
+    document.addEventListener('keydown', (event) => {
+        keys[event.key] = true;
+    });
+    document.addEventListener('keyup', (event) => {
+        keys[event.key] = false;
+    });
+
+    // Scoring system
+
+    let gameOver = false;
+    
+    // Car velocity
+    let velocity = 0;
+    const acceleration = 0.2;
+    const maxSpeed = 0.5;
+    const deceleration = 0.02;
+
+    // Game loop
+    function animate() {
+        if (gameOver) return;
+        if (!isPowerUpActive && checkCollision()) {
+            isPowerUpActive = true;  // Mark the power-up as active after collision
+            askQuestion();  // Trigger question when power-up is touched
+        }
+        requestAnimationFrame(animate);
+console.log(car.position.x);
+        if (keys['ArrowUp'] && carEnergy > 0 && isEnergyDepleting) {
+            velocity = Math.min(velocity + acceleration, maxSpeed); // Accelerate
+        } else if (keys['ArrowDown'] && carEnergy > 0 && isEnergyDepleting) {
+            velocity = Math.max(velocity - acceleration, -maxSpeed); // Reverse
+        } else {
+            // Deceleration when no keys are pressed
+            if (velocity > 0) {
+                velocity = Math.max(velocity - deceleration, 0);
+            } else if (velocity < 0) {
+                velocity = Math.min(velocity + deceleration, 0);
+            }
+        }
+        if (car.position.z<= finishLine.position.z) {
+        gameOver = true;  // Game over because the player has won
+        document.getElementById("game-over-message").style.display = 'block';
+        document.getElementById("game-over-message").querySelector("h2").textContent = 'You Win!';
+        document.getElementById("final-time").textContent = "You crossed the finish line!";
+    }
+        // Update car position based on velocity
+        const forwardDirection = new THREE.Vector3(-Math.sin(car.rotation.y), 0, -Math.cos(car.rotation.y));
+        car.position.add(forwardDirection.multiplyScalar(velocity));
+
+        // Steering logic
+        if (keys['ArrowLeft']) {
+            car.rotation.y += 0.05; // Turn left
+        }
+        if (keys['ArrowRight']) {
+            car.rotation.y -= 0.05; // Turn right
+        }
+        if (car.position.x < -99) {
+        car.position.x = -99;  // Limit to the left
+    }
+
+    if (car.position.x > 99) {
+        car.position.x = 99;  // Limit to the right
+    }
+        // Camera smooth follow with car direction
+        const offsetDistance = 3; // Distance behind the car
+        const offsetHeight = 1.1; // Height above the car
+
+        // Calculate the camera position relative to the car's direction
+        const offset = new THREE.Vector3(
+            offsetDistance * Math.sin(car.rotation.y), // X offset (behind the car)
+            offsetHeight,                              // Y offset (above the car)
+            offsetDistance * Math.cos(car.rotation.y)  // Z offset (behind the car)
+        );
+
+        // Set the camera position based on the car's position and direction
+        camera.position.copy(car.position).add(offset);
+        camera.lookAt(car.position);  // Keep the camera looking at the car
+
+        const carPositionOnGround = new THREE.Vector2(car.position.x, car.position.z);
+        const spotlightCenter = new THREE.Vector2(spotlight.position.x, spotlight.position.z);
+        const distanceToSpotlightCenter = carPositionOnGround.distanceTo(spotlightCenter);
+
+        let insideSpotlight = distanceToSpotlightCenter <= radius;
+
+        // Update car's energy based on whether it's inside or outside the spotlight
+        if (insideSpotlight) {
+            // Slow energy depletion inside the spotlight (only when moving)
+            if (velocity > 0 && isEnergyDepleting) {
+                carEnergy = Math.max(0, carEnergy - energyDepletionRateInside);  // Slower energy depletion inside spotlight
+            } else if (velocity == 0 && isEnergyDepleting) {
+                carEnergy = Math.min(100, carEnergy + energyDepletionRateInside);  // Slow recovery if stationary inside spotlight
+            }
+        }
+        else {
+            if (isEnergyDepleting) {
+                carEnergy = Math.max(0, carEnergy - energyDepletionRateOutside);  // Faster energy depletion outside spotlight
+            }
+        }
+
+        // Deplete energy when moving, regardless of whether inside spotlight
+        if (carEnergy != 0 && !insideSpotlight && isEnergyDepleting) {
+            carEnergy -= velocity * 0.1;  // Energy depletes based on movement
+        }
+
+
+    // Update energy display
+    document.getElementById("score").textContent = "Energy: " + carEnergy.toFixed(2) + "%";
+     // Check if energy is depleted
+     if (carEnergy <= 0) {
+        gameOver = true;
+        document.getElementById("game-over-message").style.display = 'block';
+        document.getElementById("final-time").textContent = "Energy Depleted";
+    }       
+    
+    renderer.render(scene, camera);
+        }
+
+        // Restart game function
+        document.getElementById('restart-button').addEventListener('click', () => {
+            gameOver = false;
+            scene.add(powerUp);
+            car.position.set(0, 1, 8); // Reset car position
+            car.rotation.set(0, 0, 0); // Reset car rotation
+            document.getElementById("game-over-message").style.display = 'none';
+            carEnergy = 100;
+            velocity = 0;
+            removePowerUps();
+            createPowerUps(25);
+    
+            animate();
+        });
+
+        animate();
+    });
+    </script>
+</body>
+</html>

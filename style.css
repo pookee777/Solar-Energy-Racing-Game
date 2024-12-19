@@ -1,0 +1,27 @@
+body {
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #87CEEB; /* Sky blue background */
+}
+
+#gameArea {
+    position: relative;
+    width: 400px;
+    height: 600px;
+    background-color: #333; /* Dark asphalt color */
+    overflow: hidden;
+    border: 2px solid #fff; /* White border */
+}
+
+#car {
+    position: absolute;
+    width: 40px;
+    height: 80px;
+    background-color: red; /* Car color */
+    bottom: 10px; /* Position the car at the bottom */
+    left: 50%; /* Center the car */
+    transform: translateX(-50%); /* Center the car */
+}
