@@ -106,13 +106,13 @@
         <div id="answer-buttons">
             <!-- Answer buttons will be dynamically added here -->
         </div>
-        
-            Submit Answer
-        </button>
     </div>
     
     <div id="game-over-message">
         <h2>Game Over</h2>
+        <div id="final-time" style="display: none; text-align: center; color: white; font-size: 24px; margin-top: 20px;">
+            <h5></h5>
+        </div>
         <button id="restart-button">Restart</button>
     </div>
     <canvas id="webgl-canvas"></canvas>
@@ -407,7 +407,8 @@ console.log(car.position.x);
         gameOver = true;  // Game over because the player has won
         document.getElementById("game-over-message").style.display = 'block';
         document.getElementById("game-over-message").querySelector("h2").textContent = 'You Win!';
-        document.getElementById("final-time").textContent = "You crossed the finish line!";
+        document.getElementById("final-time").style.display = 'block';
+        document.getElementById("final-time").querySelector("h5").textContent = "You crossed the finish line!";
     }
         // Update car position based on velocity
         const forwardDirection = new THREE.Vector3(-Math.sin(car.rotation.y), 0, -Math.cos(car.rotation.y));
@@ -475,7 +476,9 @@ console.log(car.position.x);
      if (carEnergy <= 0) {
         gameOver = true;
         document.getElementById("game-over-message").style.display = 'block';
-        document.getElementById("final-time").textContent = "Energy Depleted";
+        document.getElementById("game-over-message").querySelector("h2").textContent = 'Game Over';
+        document.getElementById("final-time").style.display = 'block';
+        document.getElementById("final-time").querySelector("h5").textContent = "Energy Depleted";
     }       
     
     renderer.render(scene, camera);
@@ -488,11 +491,12 @@ console.log(car.position.x);
             car.position.set(0, 1, 8); // Reset car position
             car.rotation.set(0, 0, 0); // Reset car rotation
             document.getElementById("game-over-message").style.display = 'none';
+
             carEnergy = 100;
             velocity = 0;
             removePowerUps();
             createPowerUps(25);
-    
+            
             animate();
         });
 
